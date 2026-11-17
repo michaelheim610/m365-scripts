@@ -8,7 +8,7 @@ Alle Skripte in diesem Repo **lesen nur**. Sie ändern nichts im Tenant.
 
 | Skript | Frage | Berechtigung |
 |---|---|---|
-| [EntraID/Get-AdminMfaStatus.ps1](EntraID/Get-AdminMfaStatus.ps1) | Welche Admins haben keine oder keine phishing-resistente MFA? | RoleManagement.Read.Directory, User.Read.All, UserAuthenticationMethod.Read.All |
+| [EntraID/Get-AdminMfaStatus.ps1](EntraID/Get-AdminMfaStatus.ps1) | Welche Admins haben keine oder keine phishing-resistente MFA? | RoleManagement.Read.Directory, User.Read.All, GroupMember.Read.All, UserAuthenticationMethod.Read.All |
 | [EntraID/Get-ConditionalAccessReport.ps1](EntraID/Get-ConditionalAccessReport.ps1) | Wie sehen meine Conditional Access Richtlinien aus, und wer ist ausgeschlossen? | Policy.Read.All, Directory.Read.All |
 | [Exchange/Get-MailboxSizeReport.ps1](Exchange/Get-MailboxSizeReport.ps1) | Wie groß sind meine Postfächer? | View-Only Recipients |
 | [Licensing/Get-LicenseReport.ps1](Licensing/Get-LicenseReport.ps1) | Welche Lizenzen habe ich, und wie viele sind frei? | Organization.Read.All |

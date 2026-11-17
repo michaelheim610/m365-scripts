@@ -14,8 +14,13 @@
     FIDO2 (Passkeys), Windows Hello for Business und Platform Credential
     (macOS Platform SSO).
 
-    Erfasst werden aktive Rollenzuweisungen. Berechtigte Zuweisungen in PIM, die
-    gerade nicht aktiviert sind, tauchen nicht auf.
+    Rollen, die über eine Gruppe zugewiesen sind, werden aufgelöst. Die
+    Mitglieder der Gruppe erscheinen im Bericht, auch aus verschachtelten
+    Gruppen. In der Spalte Rollen steht dann die Gruppe dahinter.
+
+    Erfasst werden aktive, tenantweite Rollenzuweisungen. Berechtigte
+    Zuweisungen in PIM, die gerade nicht aktiviert sind, und Zuweisungen auf
+    einzelne Verwaltungseinheiten tauchen nicht auf.
 
     Das Skript liest nur. Es ändert nichts im Tenant.
 
@@ -39,7 +44,7 @@
     Autor          Michael Heim, https://michaelheim.one
     Voraussetzung  Modul Microsoft.Graph.Authentication
     Berechtigung   RoleManagement.Read.Directory, User.Read.All,
-                   UserAuthenticationMethod.Read.All
+                   GroupMember.Read.All, UserAuthenticationMethod.Read.All
 #>
 [CmdletBinding()]
 param(
@@ -51,6 +56,7 @@ param(
 $requiredScopes = @(
     'RoleManagement.Read.Directory'
     'User.Read.All'
+    'GroupMember.Read.All'
     'UserAuthenticationMethod.Read.All'
 )
 
@@ -82,24 +88,50 @@ if (-not (Get-MgContext)) {
     Connect-MgGraph -Scopes $requiredScopes -NoWelcome
 }
 
+# Merkt ein Konto mit einer Rolle vor. Mehrere Rollen je Konto werden gesammelt.
+function Add-AdminEntry {
+    param($User, [string]$RoleLabel)
+
+    if (-not $admins.ContainsKey($User.id)) {
+        $admins[$User.id] = [PSCustomObject]@{
+            User  = $User
+            Roles = [System.Collections.Generic.List[string]]::new()
+        }
+    }
+    if ($RoleLabel -notin $admins[$User.id].Roles) {
+        $admins[$User.id].Roles.Add($RoleLabel)
+    }
+}
+
 # Schritt 1. Alle aktivierten Rollen und ihre Mitglieder einsammeln.
 $admins = @{}
+$userSelect = 'id,displayName,userPrincipalName,accountEnabled'
 $roles = Get-GraphCollection -Uri 'https://graph.microsoft.com/v1.0/directoryRoles?$select=id,displayName'
 
 foreach ($role in $roles) {
-    $members = Get-GraphCollection -Uri "https://graph.microsoft.com/v1.0/directoryRoles/$($role.id)/members?`$select=id,displayName,userPrincipalName,accountEnabled"
+    $members = Get-GraphCollection -Uri "https://graph.microsoft.com/v1.0/directoryRoles/$($role.id)/members"
 
     foreach ($member in $members) {
-        # Gruppen und Dienstprinzipale überspringen, hier geht es um Benutzer.
-        if ($member.'@odata.type' -ne '#microsoft.graph.user') { continue }
-
-        if (-not $admins.ContainsKey($member.id)) {
-            $admins[$member.id] = [PSCustomObject]@{
-                User  = $member
-                Roles = [System.Collections.Generic.List[string]]::new()
+        switch ($member.'@odata.type') {
+            '#microsoft.graph.user' {
+                Add-AdminEntry -User $member -RoleLabel $role.displayName
             }
+            '#microsoft.graph.group' {
+                # Rolle hängt an einer Gruppe. Deren Mitglieder sind genauso Admins,
+                # deshalb werden sie aufgelöst, verschachtelte Gruppen inklusive.
+                try {
+                    $groupUsers = @(Get-GraphCollection -Uri "https://graph.microsoft.com/v1.0/groups/$($member.id)/transitiveMembers/microsoft.graph.user?`$select=$userSelect")
+                }
+                catch {
+                    # Lieber laut scheitern als Admins stillschweigend auslassen.
+                    throw "Die Mitglieder der Gruppe '$($member.displayName)' mit der Rolle '$($role.displayName)' konnten nicht gelesen werden. Der Bericht wäre unvollständig. Prüfe die Berechtigung GroupMember.Read.All. $($_.Exception.Message)"
+                }
+                foreach ($groupUser in $groupUsers) {
+                    Add-AdminEntry -User $groupUser -RoleLabel "$($role.displayName) (über Gruppe $($member.displayName))"
+                }
+            }
+            # Dienstprinzipale haben keine MFA und werden hier nicht bewertet.
         }
-        $admins[$member.id].Roles.Add($role.displayName)
     }
 }
 
