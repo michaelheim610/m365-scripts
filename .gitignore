@@ -1,0 +1,11 @@
+# Berichte und Sicherungen, die die Skripte erzeugen
+*.csv
+*.html
+M365-Config/
+
+# Lokale Einstellungen und Zugangsdaten
+.env
+*.pfx
+*.cer
+.vscode/
+.DS_Store
